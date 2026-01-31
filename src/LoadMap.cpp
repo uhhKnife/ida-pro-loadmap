@@ -27,6 +27,10 @@
 #include <cstring>
 #undef _NO_OLDNAMES
 
+#ifndef __NT__
+#include <cerrno>
+#endif
+
 //  other headers.
 #include  "MAPReader.h"
 #include "stdafx.h"
@@ -222,7 +226,7 @@ static plugmod_t *idaapi init()
 ////////////////////////////////////////////////////////////////////////////////
 bool idaapi run(size_t)
 {
-    static char mapFileName[_MAX_PATH] = { 0 };
+    static char mapFileName[QMAXPATH] = { 0 };
 
     { // If user press shift key, show options dialog
 #if 0
@@ -233,9 +237,13 @@ bool idaapi run(size_t)
         // Qt method - requires a special version of Qt which was used for building IDA
         Qt::KeyboardModifiers key = QApplication::queryKeyboardModifiers();
         if (key == Qt::ShiftModifier)
-#else
+#elif defined(__NT__)
         // Windows-only method
         if (GetAsyncKeyState(VK_SHIFT) & 0x8000)
+#else
+        // For Linux/Mac without Qt dev lib, just always show options dialog
+        // (shift key detection is too complicated without Qt)
+        if (true)
 #endif
         {
             showOptionsDlg();
@@ -271,8 +279,13 @@ bool idaapi run(size_t)
     switch (eRet)
     {
         case MapFile::WIN32_ERROR:
+#ifdef __NT__
             warning("Could not open file '%s'.\nWin32 Error Code = 0x%08X",
                     fname, GetLastError());
+#else
+            warning("Could not open file '%s'.\nError: %s",
+                    fname, strerror(errno));
+#endif
             return false;
 
         case MapFile::FILE_EMPTY_ERROR:
@@ -468,7 +481,7 @@ bool idaapi run(size_t)
         warning("Exception while parsing MAP file '%s'");
         invalidSyms++;
     }
-    MapFile::closeMAP(pMapStart);
+    MapFile::closeMAP(pMapStart, mapSize);
     hide_wait_box();
 
     if (sectnNumber == 0)

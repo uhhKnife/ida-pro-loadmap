@@ -57,7 +57,7 @@ typedef struct {
     char name[MAXNAMELEN + 1];
 } MAPSymbol;
 
-void closeMAP(const void * lpAddr);
+void closeMAP(const void * lpAddr, size_t size);
 MAPResult openMAP(const char * lpszFileName, char * &lpMapAddr, size_t &dwSize);
 const char * skipSpaces(const char * pStart, const char * pEnd);
 const char * findEOL(const char * pStart, const char * pEnd);

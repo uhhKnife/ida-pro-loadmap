@@ -1,52 +1,72 @@
-# IDA Pro plugin for loading .MAP symbol files
+# idaxex
 
-Loads a VC/Borland/Dede/GCC/IDA `.map` file into IDA Database.
+idaxex is a native loader plugin for IDA Pro, adding support for loading in Xbox360 XEX & Xbox XBE executables.
 
-## What is the MAP file
+Originally started as an [IDAPython loader](https://github.com/emoose/reversing/blob/master/xbox360.py), work was continued as a native DLL to solve the shortcomings of it.
 
-The `.map` file may be generated during compilation, and contain some of debug info (function names, global variables,
-in some cases locals as well).
+This should have the same features as xorloser's great Xex Loader (for IDA 6 and older), along with additional support for some early non-XEX2 formats, such as XEX1 used on beta-kits.
 
-In the past, it was generated automatically by many compilers. For some programs, it was included in a pre-release
-version, or even in final release.
+XBE files are additionally supported, adding a few extra features over the loader included with IDA.
 
-Todays compiles still have ability to enable `.map` file generation, ie:
+## Supported formats
 
-* Watcom linker has `OPTION MAP[=map_file]` command line switch
-* GCC linker has `-Xlinker -Map=output.map` command line switch
-* Microsoft VC linker has `/MAP[:filename]` command line switch
+Includes support for the following Xbox executables:
+- XEX2 (>= kernel 1861)
+- XEX1 (>= 1838)
+- XEX% (>= 1746)
+- XEX- (>= 1640)
+- XEX? (>= 1529)
+- XEX0 (>= 1332)
+- XBE (>= XboxOG ~3729)
 
-## More information
+## Features
 
-See src/LoadMap.cpp for credits, license and changelog.
+- Can handle compressed/uncompressed images, and encrypted/decrypted (with support for retail, devkit & pre-release encryption keys)
+- Reads in imports & exports into the appropriate IDA import/export views.
+- Automatically names imports that are well-known, such as imports from the kernel & XAM, just like xorloser's loader would.
+- PE sections are created & marked with the appropriate permissions as given by the PE headers.
+- AES-NI support to help improve load times of larger XEXs.
+- Marks functions from .pdata exception directory & allows IDA's eh_parse plugin to read exception information.
+- Passes codeview information over to IDA, allowing it to prompt for & load PDBs without warnings/errors.
+- Patched bytes can be written back to input file via IDA `Apply patches to input` option (works for all XBEs, XEX must be both uncompressed & decrypted using `xextool -eu -cu input.xex` first)
+- XBE: adds kernel imports to IDA imports view
+- XBE: tries naming SDK library functions using [XbSymbolDatabase](https://github.com/Cxbx-Reloaded/XbSymbolDatabase) & data from XTLID section
 
-## Installation
+## Install
+Builds for IDA 9 are available in the releases section.
 
-* Copy loadmap.dll to IDA plugins folder
-* Open any PE/LE file project
-* Click Load MAP with Shift to see options
+To install the loader just extract the contents of the folder for your IDA version into IDA's install folder (eg. C:\Program Files\IDA Professional 9.0\)
+
+I recommend pairing this loader with the PPCAltivec plugin, an updated version for IDA 7 is available at hayleyxyz's repo here: https://github.com/hayleyxyz/PPC-Altivec-IDA
 
 ## Building
 
-The building requires IDA Pro SDK.
+Make sure to clone repo recursively for excrypt submodule to get pulled in.
 
-To rebuilt the project on Windows using GUI, copy it to IDA SDK `plugins/loadmap` folder, then open SLN file and build it with Visual Studio.
+**Windows**
 
-To rebuilt the project from command line, check how the Github Actions do that. You will need some GNU tools including make, and VC compiler from Visual Studio.
+Clone the repo into your idasdk\ldr\ folder and then build idaxex.sln with VS2022.
 
-## Troubleshooting
+**Linux**
 
-If the plugin does not show in "Edit" -> "Plugins", then:
-* Make sure you have a code project opened
-* Check IDA "Output" console, there should be a message either confirming the load or with error
-* If the "Output" console shows "Cannot load certain module", you probably lack Visual C++ Redistributable Package
-* Check the "Issues" tab of this project on Github for more info
+- Copy the plugin folder into your idasdk/src/plugins/ directory
+- Set the IDA environment variable to point to your idasdk/src/ folder
+- Run `make` inside the plugin folder
+- Copy the built plugin from idasdk/src/bin/plugins/ to ~/.idapro/plugins/ (rename to loadmap64.so for 64-bit IDA)
 
-## Known issues
+## Credits
+Based on work by the Xenia project, XEX2.bt by Anthony, xextool 0.1 by xor37h, Xex Loader & x360_imports.idc by xorloser, xkelib, and probably many others I forgot to name.
 
-Currently it doesn't understand MAP files with 64-bit offsets - new versions of GCC produce files with such long offsets.
-WA for this is to just remove excessive zeros from offsets in MAP file before loading it.
+Thanks to everyone involved in the Xbox 360 modding/reverse-engineering community!
 
-Currently the tool uses Windows API, so will not work with Linux or Mac OS version of IDA Pro. To fix that:
-* reading keys would have to be switched to one from Qt
-* memory mapped file usage would have to be implemented (or switched to C++ standard method, when it finally arrives)
+XTLID parsing supported thanks to the [XboxDev/xtlid project](https://github.com/XboxDev/xtlid).
+
+# xex1tool
+Also included is an attempt at recreating xorloser's XexTool, for working with older pre-XEX2 executables.  
+(The name is only to differentiate it from the original XexTool - it'll still support XEX2 files fine)
+
+So far it can print info about the various XEX headers via `-l`, and extract the basefile (PE/XUIZ) from inside the XEX.
+
+For XEX files that are both decrypted & decompressed xex1tool can also convert a VA address to a file offset for you, making file patching a little easier.
+
+Support for other XexTool features may slowly be added over time (of course any help is appreciated!)

@@ -20,7 +20,16 @@
 #include  <cassert>
 #include  <cstdlib>
 
+// Platform-specific includes
+#ifdef __NT__
 #include "stdafx.h"
+#else
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cerrno>
+#endif
 
 using namespace std;
 
@@ -70,10 +79,14 @@ MapFile::MAPResult MapFile::openMAP(const char * fileName, char * &mapAddr, size
     assert(NULL != fileName);
     if (NULL == fileName)
     {
+#ifdef __NT__
         SetLastError(ERROR_INVALID_PARAMETER);
+#endif
         return WIN32_ERROR;
     }
 
+#ifdef __NT__
+    // Windows implementation
     // Open the file
     HANDLE hFile = CreateFile(fileName, GENERIC_READ, FILE_SHARE_READ, NULL,
                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -109,11 +122,51 @@ MapFile::MAPResult MapFile::openMAP(const char * fileName, char * &mapAddr, size
 
     // Map View successful, do not need the map handle anymore
     WIN32CHECK(CloseHandle(hMap));
+#else
+    // POSIX implementation (Linux/Mac)
+    // Open the file
+    int fd = open(fileName, O_RDONLY);
+    if (fd == -1)
+    {
+        return WIN32_ERROR;
+    }
+
+    // Get file size
+    struct stat st;
+    if (fstat(fd, &st) == -1)
+    {
+        close(fd);
+        return WIN32_ERROR;
+    }
+
+    dwSize = st.st_size;
+    if (dwSize == 0)
+    {
+        close(fd);
+        return FILE_EMPTY_ERROR;
+    }
+
+    // Memory map the file
+    mapAddr = (char*) mmap(NULL, dwSize, PROT_READ, MAP_PRIVATE, fd, 0);
+    
+    // Close file descriptor (no longer needed after mmap)
+    close(fd);
+    
+    if (mapAddr == MAP_FAILED)
+    {
+        mapAddr = NULL;
+        return WIN32_ERROR;
+    }
+#endif
 
     if (NULL != memchr(mapAddr, 0, dwSize))
     {
         // File is binary or Unicode file
+#ifdef __NT__
         WIN32CHECK(UnmapViewOfFile(mapAddr));
+#else
+        munmap(mapAddr, dwSize);
+#endif
         mapAddr = NULL;
         return FILE_BINARY_ERROR;
     }
@@ -124,12 +177,17 @@ MapFile::MAPResult MapFile::openMAP(const char * fileName, char * &mapAddr, size
 ////////////////////////////////////////////////////////////////////////////////
 /// @brief Close memory map file which opened by MemMapFileOpen function.
 /// @param lpAddr: Pointer to memory return by MemMapFileOpen.
+/// @param size: Size of the mapped region.
 /// @author TQN
 /// @date 2004.09.12
 ////////////////////////////////////////////////////////////////////////////////
-void MapFile::closeMAP(const void * lpAddr)
+void MapFile::closeMAP(const void * lpAddr, size_t size)
 {
+#ifdef __NT__
     WIN32CHECK(UnmapViewOfFile(lpAddr));
+#else
+    munmap(const_cast<void*>(lpAddr), size);
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////

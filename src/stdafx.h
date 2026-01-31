@@ -16,6 +16,7 @@
 #ifndef STDAFX_H_
 #define STDAFX_H_
 
+#ifdef __NT__
 #define WIN32_LEAN_AND_MEAN		// Exclude rarely-used stuff from Windows headers
 #define _OBJC_NO_COM
 //#define WINSHLWAPI
@@ -38,6 +39,14 @@
 #pragma comment(lib, "shlwapi.lib")
 
 #define strncasecmp strnicmp
+
+#else
+// Linux/Mac includes
+#include <cstdarg>
+#include <cstring>
+#include <strings.h>
+#define strncasecmp strncasecmp
+#endif
 
 void pathExtensionSwitch(char * fname, const char * newext, size_t fnbuf_len);
 
