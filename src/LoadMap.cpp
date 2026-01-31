@@ -6,7 +6,9 @@
 ///     Based on the idea of loadmap plugin by Toshiyuki Tega.
 /// @author TQN <truong_quoc_ngan@yahoo.com>
 /// @author TL <mefistotelis@gmail.com>
-/// @date 2004.09.11 - 2018.11.08
+/// @date 2004.09.11 - 2025.01.31
+/// @version 1.5 - 2025.01.31 - Proper function creation using add_entry(), improved symbol loading
+/// @version 1.4 - 2023.11.22 - Config file save support
 /// @version 1.3 - 2018.11.08 - Compiling in VS2010, SDK from IDA 7.0
 /// @version 1.2 - 2012.07.18 - Loading GCC MAP files, compiling in IDA 6.2
 /// @version 1.1 - 2011.09.13 - Loading Watcom MAP files, compiling in IDA 6.1
@@ -19,7 +21,7 @@
 ///     IDA Pro SDK by Hex-rays is required to use this software; that
 ///     SDK has more complex licensing situation, and is not under GPL.
 ////////////////////////////////////////////////////////////////////////////////
-#define PLUG_VERSION "1.4"
+#define PLUG_VERSION "1.5"
 //  standard library headers.
 #include <cstdio>
 // Makes gcc stdlib to not define non-underscored versions of non-ANSI functions (ie memicmp, strlwr)
@@ -47,6 +49,8 @@
 #include <bytes.hpp>
 #include <name.hpp>
 #include <entry.hpp>
+#include <funcs.hpp>
+#include <auto.hpp>
 #include <fpro.h>
 #include <err.h> // for qerrstr()
 #include <prodir.h> // just for MAXPATH
@@ -241,7 +245,7 @@ bool idaapi run(size_t)
         // Windows-only method
         if (GetAsyncKeyState(VK_SHIFT) & 0x8000)
 #else
-        // For Linux/Mac without Qt dev lib, just always show options dialog
+        // For Linux just always show options dialog
         // (shift key detection is too complicated without Qt)
         if (true)
 #endif
@@ -440,21 +444,48 @@ bool idaapi run(size_t)
             ea_t la = sym.addr + getnseg((int) sym.seg)->start_ea;
             flags_t f = get_full_flags(la);
 
-            bool didOk;
+            bool didOk = false;
+            bool didSkip = false;
             if (bNameApply) // Apply symbols for name
             {
                 //  Add name if there's no meaningful name assigned.
                 if (g_options.bReplace ||
                     (!has_name(f) || has_dummy_name(f) || has_auto_name(f)))
                 {
-                    didOk = set_name(la, pname, SN_NOCHECK | SN_NOWARN);
+                    // Determine if this is code or data
+                    segment_t *seg = getnseg((int) sym.seg);
+                    bool is_code = (seg != nullptr && seg->type == SEG_CODE);
+                    
+                    if (is_code)
+                    {
+                        // For code symbols, use add_entry which creates functions
+                        // and triggers auto-analysis
+                        didOk = add_entry(la, la, pname, true, AEF_IDBENC);
 #ifdef __EA64__
-                    showMsg("%04lX:%08llX - Change name to '%s' %s\n",
-                        sym.seg, la, pname, didOk ? "succeeded" : "failed");
+                        showMsg("%04lX:%08llX - Add entry '%s' %s\n",
+                            sym.seg, la, pname, didOk ? "succeeded" : "failed");
 #else
-                    showMsg("%04lX:%08lX - Change name to '%s' %s\n",
-                        sym.seg, la, pname, didOk ? "succeeded" : "failed");
+                        showMsg("%04lX:%08lX - Add entry '%s' %s\n",
+                            sym.seg, la, pname, didOk ? "succeeded" : "failed");
 #endif
+                    }
+                    else
+                    {
+                        // For data symbols, just set the name with proper flags
+                        didOk = set_name(la, pname, SN_NON_AUTO | SN_PUBLIC | SN_IDBENC);
+#ifdef __EA64__
+                        showMsg("%04lX:%08llX - Set name '%s' %s\n",
+                            sym.seg, la, pname, didOk ? "succeeded" : "failed");
+#else
+                        showMsg("%04lX:%08lX - Set name '%s' %s\n",
+                            sym.seg, la, pname, didOk ? "succeeded" : "failed");
+#endif
+                    }
+                }
+                else
+                {
+                    // Symbol already has a name and we're not replacing
+                    didSkip = true;
                 }
             }
             else if (g_options.bReplace || !has_cmt(f))
@@ -469,9 +500,14 @@ bool idaapi run(size_t)
                     sym.seg, la, pname, didOk ? "succeeded" : "failed");
 #endif
             }
+            else
+            {
+                // Comment already exists and we're not replacing
+                didSkip = true;
+            }
             if (didOk)
                 validSyms++;
-            else
+            else if (!didSkip)
                 invalidSyms++;
         }
 
